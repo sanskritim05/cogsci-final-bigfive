@@ -1,0 +1,294 @@
+---
+title: "Big Five Personality Project (Exploratory)"
+output: html_notebook
+author: "Sanskriti Malakar"
+---
+
+```{r library, echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+```
+
+# Introduction
+
+This notebook is the exploratory part of my final project. The goal of this notebook is to clean and score the data and then explore it through descriptive statistics and visualizations to identify interesting patterns and relationships among the traits and demographic variables.
+
+This project uses secondary data from a large online Big Five personality test (OpenPsychometrics; collected around 2012). Participants answered 50 personality items on a 1–5 scale (1 = Disagree, 5 = Agree). In the raw dataset, a response value of 0 means the participant skipped that question, so I treat 0 as missing (NA).
+
+In this exploration, I will:
+
+- import the dataset and identify the personality item columns  
+- clean missing values (convert 0 → NA)  
+- compute Big Five trait scores (including reverse-keyed items)  
+- check sample size, missingness patterns, and group sizes  
+- explore descriptive statistics and distributions for key variables  
+- explore relationships between traits and demographics using multiple plot types  
+
+
+# Data Import + Checks
+First I loaded the dataset and confirm it imported correctly (rows/columns). Then I identify the Big Five item columns and convert “0” responses (skipped questions) into NA so that missing data is handled appropriately in summaries and plots.
+
+```{r import_and_clean_data, echo=FALSE, warning=FALSE, message=FALSE}
+# read tab-delimited file
+big5 <- read_delim("data/data.csv", delim = "\t", show_col_types = FALSE)
+
+# identify personality item columns (E/N/A/C/O followed by digits)
+items <- names(select(big5, matches("^[ENACO][0-9]+$")))
+
+# convert skipped items (0) to NA
+big5_clean <- big5 |>
+  mutate(across(all_of(items), ~ na_if(.x, 0)))
+
+# convert skipped demographic values (0) to NA
+big5_clean <- big5_clean |>
+  mutate(
+    gender  = na_if(gender, 0),
+    age     = na_if(age, 0),
+    race    = na_if(race, 0),
+    hand    = na_if(hand, 0),
+    engnat  = na_if(engnat, 0),
+    source  = na_if(source, 0),
+    country = na_if(country, "0")
+  )
+
+dim(big5_clean)
+```
+The output above shows the dataset dimensions after cleaning (19719 × 57). This confirms the file imported correctly and that I have 19,719 participant rows and 57 variables available for scoring and exploratory analysis.
+
+Next I recode the demographic variables into labeled factors. This makes tables and plots interpretable (e.g., “Female” instead of “2”) and helps avoid mistakes when comparing groups.
+```{r recode, echo=FALSE, warning=FALSE, message=FALSE}
+# recode demographics to readable factors
+big5_clean <- big5_clean |>
+  mutate(
+    gender = factor(gender,
+      levels = c(1, 2, 3),
+      labels = c("Male", "Female", "Other")
+    ),
+    engnat = factor(engnat,
+      levels = c(1, 2),
+      labels = c("English (native)", "Not English (native)")
+    ),
+    hand = factor(hand,
+      levels = c(1, 2, 3),
+      labels = c("Right", "Left", "Both")
+    ),
+    source = factor(source,
+      levels = c(1, 2, 3, 4, 6),
+      labels = c("Test site", "Google", "Facebook", ".edu", "Other/unknown")
+    )
+  )
+```
+
+Some items in the Big Five questionnaire are reverse-keyed, meaning that agreement indicates less of the trait rather than more. To ensure that higher scores consistently reflect higher levels of each trait, I reverse-score these items. Because responses are on a 1–5 scale, reverse scoring is done using the transformation 6 − response. This allows all items within a trait to be averaged meaningfully.
+
+```{r reverse_scoring, echo=FALSE, warning=FALSE, message=FALSE}
+# reverse scoring on 1–5 scale: new = 6 - old
+reverse_items <- c(
+  "E2", "E4", "E6", "E8", "E10",
+  "N2", "N4",
+  "A1", "A3", "A5", "A7",
+  "C2", "C4", "C6", "C8",
+  "O2", "O4", "O6"
+)
+
+big5_scores <- big5_clean |>
+  mutate(across(all_of(reverse_items), ~ 6 - .x)) |>
+  mutate(
+    extraversion      = rowMeans(across(E1:E10), na.rm = TRUE),
+    neuroticism       = rowMeans(across(N1:N10), na.rm = TRUE),
+    agreeableness     = rowMeans(across(A1:A10), na.rm = TRUE),
+    conscientiousness = rowMeans(across(C1:C10), na.rm = TRUE),
+    openness          = rowMeans(across(O1:O10), na.rm = TRUE)
+  )
+
+trait_vars <- c(
+  "extraversion", "neuroticism", "agreeableness",
+  "conscientiousness", "openness"
+)
+
+participant_n <- nrow(big5_scores)
+```
+
+# Understanding Missingness and Group Sizes
+Before interpreting any results, I check (1) the overall sample size, (2) how much missing data exists in the variables I’ll use, and (3) how many participants are in each demographic group. This matters because heavy missingness or very small groups can make comparisons unstable.
+
+```{r missingness, echo=FALSE, warning=FALSE, message=FALSE}
+
+key_vars <- c(trait_vars, "age", "gender", "race", "hand", "engnat", "country", "source")
+
+missing_tbl <- big5_scores |>
+  summarise(across(all_of(key_vars), ~ sum(is.na(.x)))) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "n_missing") |>
+  arrange(desc(n_missing))
+
+missing_tbl
+```
+The missingness table helps me see which variables have the most missing data. For later plots, I’ll interpret results cautiously for variables with high missingness and I filter out missing group labels when making group comparisons (e.g., gender or native English status).
+
+```{r distribution_of_demographics, echo=FALSE, warning=FALSE, message=FALSE}
+# demographic group sizes
+big5_scores |> count(gender, sort = TRUE)
+big5_scores |> count(engnat, sort = TRUE)
+big5_scores |> count(hand, sort = TRUE)
+big5_scores |> count(source, sort = TRUE)
+```
+
+These tables show the distribution of key demographic variables. The sample is majority female and predominantly right-handed, with relatively few participants identifying as “Other” gender or as ambidextrous. Most participants report being native English speakers, though a substantial non-native English group is present. Participants primarily arrived at the test through the test site or Google, with relatively few from Facebook or .edu sources. Some missing demographic data is present, so later group-based plots exclude missing categories.
+
+
+# Exploring Age Distribution 
+
+I examined distributions for age and the Big Five traits. This helped me understand typical ranges, skew, and whether there are any unusual values that could affect interpretation.
+```{r plot_age_distribution, echo=FALSE, warning=FALSE, message=FALSE}
+big5_scores |>
+  filter(age >= 13, age <= 90) |>
+  ggplot(aes(x = age)) +
+  geom_histogram(binwidth = 2) +
+  labs(
+    title = "Age Distribution (Ages 13–90)",
+    x = "Age",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+```
+The age distribution is right-skewed, with most participants concentrated in the late teens and early 20s and progressively fewer participants at older ages.
+
+# Exploring Big Five Trait Descriptives and Distributions
+The table below shows descriptive statistics for each of the Big Five traits, including mean, standard deviation, minimum, and maximum scores. This helps me understand the central tendency and variability of each trait in the sample. Each trait score is the average of 10 items measured on a 1–5 scale, so higher values indicate higher levels of the trait.
+```{r trait_descriptives_by_trait, echo=FALSE, warning=FALSE, message=FALSE}
+big5_scores |>
+  select(all_of(trait_vars)) |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "trait",
+    values_to = "score"
+  ) |>
+  group_by(trait) |>
+  summarise(
+    mean = mean(score, na.rm = TRUE),
+    sd   = sd(score, na.rm = TRUE),
+    min  = min(score, na.rm = TRUE),
+    max  = max(score, na.rm = TRUE)
+  )
+
+```
+Agreeableness and openness have the highest average scores in the sample (around 3.8–3.9), indicating that participants tend to rate themselves relatively high on these traits. Conscientiousness and extraversion show more moderate average levels, while neuroticism falls near the middle of the scale
+
+```{r histogram_for_each_trait, echo=FALSE, warning=FALSE, message=FALSE}
+trait_long <- big5_scores |>
+  select(all_of(trait_vars)) |>
+  pivot_longer(everything(), names_to = "trait", values_to = "score")
+
+ggplot(trait_long, aes(x = score)) +
+  geom_histogram(binwidth = 0.2) +
+  facet_wrap(~trait, ncol = 2) +
+  labs(
+    title = "Distributions of Big Five Trait Scores",
+    x = "Average trait score (1–5)",
+    y = "Number of participants"
+  ) +
+  theme_minimal()
+```
+The trait score distributions are mostly centered in the middle to higher range of the 1–5 scale. Agreeableness and openness tend to have higher scores overall, while extraversion and neuroticism show more spread across participants. Overall, the distributions indicate meaningful individual differences across all five traits, without strong floor or ceiling effects.
+
+# Exploring Relationships Between Traits 
+Next, I explored relationships between the Big Five traits and demographic variables using various plot types. This helps identify interesting patterns and differences across groups.
+```{r trait_correlation, echo=FALSE, warning=FALSE, message=FALSE}
+cor_df <- big5_scores |>
+  select(all_of(trait_vars)) |>
+  cor(use = "pairwise.complete.obs") |>
+  as_tibble(rownames = "trait1") |>
+  pivot_longer(-trait1, names_to = "trait2", values_to = "r")
+
+ggplot(cor_df, aes(x = trait1, y = trait2, fill = r)) +
+  geom_tile() +
+  geom_text(aes(label = round(r, 2))) +
+  labs(title = "Correlation Heatmap of Big Five Traits", x = "", y = "") +
+  theme_minimal()
+```
+
+The correlations between the Big Five traits are mostly small to moderate. Extraversion is positively related to agreeableness, while neuroticism tends to be negatively related to conscientiousness and extraversion. Overall, the traits are related but largely distinct from one another.
+
+# Exploring Relationships Between Traits and Demographics
+```{r traits_by_gender, echo=FALSE, warning=FALSE, message=FALSE}
+gender_long <- big5_scores |>
+  select(gender, all_of(trait_vars)) |>
+  pivot_longer(all_of(trait_vars), names_to = "trait", values_to = "score") |>
+  filter(!is.na(gender))
+
+for (t in trait_vars) {
+  p <- ggplot(
+    filter(gender_long, trait == t),
+    aes(x = gender, y = score)
+  ) +
+    geom_boxplot(outlier.shape = NA) +
+    labs(
+      title = paste("Gender Differences in", tools::toTitleCase(t)),
+      x = "",
+      y = "Average trait score (1–5)"
+    ) +
+    theme_minimal()
+  
+  print(p)
+}
+```
+Overall, the distributions for males and females are similar across traits, with some small shifts in central tendency. Females tend to show slightly higher median agreeableness and conscientiousness, while males show slightly higher extraversion. Neuroticism appears somewhat higher among females on average.The “Other” gender group shows more variability, which is likely due to its much smaller sample size.
+
+```{r traits_across_age, echo=FALSE, warning=FALSE, message=FALSE}
+age_long <- big5_scores |>
+  select(age, all_of(trait_vars)) |>
+  pivot_longer(all_of(trait_vars), names_to = "trait", values_to = "score") |>
+  filter(!is.na(age), age >= 13, age <= 90)
+
+ggplot(age_long, aes(x = age, y = score)) +
+  geom_smooth(se = FALSE) +
+  facet_wrap(~ trait, ncol = 2) +
+  labs(
+    title = "Traits Across Age (Ages 13–90)",
+    x = "Age",
+    y = "Average trait score (1–5)"
+  ) +
+  theme_minimal()
+
+```
+This figure shows how Big Five trait scores change across age. Overall, the changes are gradual. Agreeableness and conscientiousness tend to increase with age, extraversion increases slightly in early adulthood and then declines, and neuroticism generally decreases. Openness remains fairly stable across most ages, with a small decline at older ages.
+
+```{r openness_by_handedness (mean + SE), echo=FALSE, warning=FALSE, message=FALSE}
+big5_scores |>
+  filter(!is.na(hand)) |>
+  ggplot(aes(x = hand, y = openness)) +
+  geom_jitter(width = 0.15, alpha = 0.05) +
+  labs(
+    title = "Openness by Handedness",
+    x = "",
+    y = "Openness score (1–5)"
+  ) +
+  theme_minimal()
+
+```
+This plot shows individual openness scores by handedness. Each point represents one participant, and the spread of points shows how openness varies within each group. The right-handed group is much larger than the left-handed and ambidextrous groups, which is reflected in the higher density of points. Overall, openness scores largely overlap across handedness groups. There is no clear evidence of large differences in openness by handedness in this sample.
+
+```{r traits_by_native_english_status, echo=FALSE, warning=FALSE, message=FALSE}
+engnat_long <- big5_scores |>
+  select(engnat, all_of(trait_vars)) |>
+  pivot_longer(all_of(trait_vars), names_to = "trait", values_to = "score") |>
+  filter(!is.na(engnat))
+
+ggplot(engnat_long, aes(x = engnat, y = score)) +
+  geom_boxplot(outlier.shape = NA) +
+  facet_wrap(~ trait, ncol = 2) +
+  labs(
+    title = "Traits by Native English Status",
+    x = "",
+    y = "Average trait score (1–5)"
+  ) +
+  theme_minimal()
+```
+This figure compares Big Five trait score distributions between native and non-native English speakers. Across all five traits, the distributions are very similar, with substantial overlap between the two groups. Median scores and overall spread are nearly the same for agreeableness, conscientiousness, extraversion, neuroticism, and openness. Any differences that appear are small, suggesting that native English status is not strongly associated with Big Five trait scores in this sample.
+
+```{r save_scored_data, echo=FALSE, warning=FALSE, message=FALSE}
+write_csv(big5_scores, "data/scored_big5.csv")
+```
+
+# Summary
+In this exploratory analysis, I cleaned and scored a large Big Five personality dataset and examined missingness, distributions, and relationships among traits and demographic variables. Trait scores showed meaningful variability, with agreeableness and openness tending to be higher on average and no strong floor or ceiling effects. Exploratory plots indicated that demographic differences by gender, handedness, and native English status were generally small, with substantial overlap across groups. In contrast, age showed clearer and more consistent patterns, with gradual changes in traits across adulthood. Overall, these findings helped identify which variables are most informative and and should be used in the communication document.
