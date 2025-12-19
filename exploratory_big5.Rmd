@@ -303,5 +303,4 @@ This figure compares Big Five trait score distributions between native and non-n
 
 
 # Summary
-
 In this exploratory analysis, I cleaned and scored a large Big Five personality dataset and examined missingness, distributions, and relationships among traits and demographic variables. Trait scores showed meaningful variability, with agreeableness and openness tending to be higher on average and no strong floor or ceiling effects. Exploratory plots indicated that demographic differences by gender, handedness, and native English status were generally small, with substantial overlap across groups. In contrast, age showed clearer and more consistent patterns, with gradual changes in traits across adulthood. Overall, these findings helped identify which variables are most informative and and should be used in the communication document.
