@@ -1,0 +1,421 @@
+---
+title: "How Does Personality Change With Age?"
+author: "Sanskriti Malakar"
+format:
+  html:
+    toc: false
+    page-layout: full
+    theme: cosmo
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+## The question behind this infographic
+
+<details>
+<summary><strong>Why study personality across age?</strong></summary>
+
+People often describe personality as something fixed early in life. Cognitive science asks a deeper question: does personality remain stable or does it change as people age and develop emotionally and cognitively? Personality traits shape how people think, regulate emotions, focus attention, and make decisions. Understanding whether these traits shift across the lifespan helps explain changes in emotional stability and social behavior.
+
+</details>
+
+<details>
+<summary><strong>Why look beyond age?</strong></summary>
+
+To interpret age-related patterns responsibly, this infographic also examines:
+
+- Overall Big Five trait levels  
+- Gender differences in personality  
+- Relationships between the traits  
+
+</details>
+
+---
+
+## Where the data comes from
+
+<details>
+<summary><strong>Data source and collection</strong></summary>
+
+This project uses secondary data from OpenPsychometrics.org, collected around 2012. Participants completed an interactive online Big Five personality test.
+
+They were informed at the beginning that their responses could be used for research and were asked to confirm consent and accuracy at the end. Only participants who confirmed were included.
+
+</details>
+
+<details>
+<summary><strong>What participants answered</strong></summary>
+
+Participants rated 50 short statements describing everyday thoughts and behaviors (e.g., “I am the life of the party”) on a 1–5 agreement scale:
+
+- 1 = Disagree  
+- 3 = Neutral  
+- 5 = Agree  
+- 0 = skipped (treated as missing)
+
+</details>
+
+<details>
+<summary><strong>Who is in the dataset?</strong></summary>
+
+The dataset includes 19,719 participants and with information on:
+
+- Age  
+- Gender  
+- Native English status  
+- Handedness  
+- Race  
+- Country  
+- How the participant reached the test  
+
+Because this is a voluntary online sample, results are descriptive rather than causal and are not guaranteed to be nationally representative.
+
+</details>
+
+---
+
+## What do the Big Five personality traits represent?
+
+<details open>
+<summary><strong>Big Five trait overview</strong></summary>
+
+- **Extraversion** – sociability and energy  
+- **Neuroticism** – emotional reactivity and stress sensitivity  
+- **Agreeableness** – empathy and cooperation  
+- **Conscientiousness** – organization and self-control  
+- **Openness to Experience** – curiosity and imagination  
+
+Each trait score is the average of 10 items, with reverse-keyed items recoded so that higher scores always reflect higher levels of the trait.
+
+</details>
+
+---
+
+## Research questions
+
+<details>
+<summary><strong>Primary research question</strong></summary>
+
+How do Big Five personality traits change across age?
+
+</details>
+
+<details>
+<summary><strong>Secondary research questions</strong></summary>
+
+- What do average Big Five trait levels look like across the full sample?  
+- Are age-related trends larger or more consistent than gender differences?  
+- How strongly are the Big Five traits related to one another?  
+
+</details>
+
+
+```{r load_and_clean_data}
+library(tidyverse)
+
+big5 <- read_delim("data/data.csv", delim = "\t", show_col_types = FALSE)
+
+items <- names(select(big5, matches("^[ENACO][0-9]+$")))
+
+big5_clean <- big5 |>
+  mutate(across(all_of(items), ~ na_if(.x, 0))) |>
+  mutate(
+    gender  = na_if(gender, 0),
+    age     = na_if(age, 0),
+    race    = na_if(race, 0),
+    hand    = na_if(hand, 0),
+    engnat  = na_if(engnat, 0),
+    source  = na_if(source, 0),
+    country = na_if(country, "0")
+  ) |>
+  mutate(
+    gender = factor(gender, levels = c(1, 2, 3), labels = c("Male", "Female", "Other")),
+    engnat = factor(engnat, levels = c(1, 2), labels = c("English (native)", "Not English (native)")),
+    hand = factor(hand, levels = c(1, 2, 3), labels = c("Right", "Left", "Both")),
+    source = factor(source,
+      levels = c(1, 2, 3, 4, 6),
+      labels = c("Test site", "Google", "Facebook", ".edu", "Other/unknown")
+    )
+  )
+
+reverse_items <- c(
+  "E2", "E4", "E6", "E8", "E10",
+  "N2", "N4",
+  "A1", "A3", "A5", "A7",
+  "C2", "C4", "C6", "C8",
+  "O2", "O4", "O6"
+)
+
+big5_scores <- big5_clean |>
+  mutate(across(all_of(reverse_items), ~ 6 - .x)) |>
+  mutate(
+    Extraversion      = rowMeans(across(E1:E10), na.rm = TRUE),
+    Neuroticism       = rowMeans(across(N1:N10), na.rm = TRUE),
+    Agreeableness     = rowMeans(across(A1:A10), na.rm = TRUE),
+    Conscientiousness = rowMeans(across(C1:C10), na.rm = TRUE),
+    Openness          = rowMeans(across(O1:O10), na.rm = TRUE)
+  )
+
+trait_vars <- c("Extraversion", "Neuroticism", "Agreeableness", "Conscientiousness", "Openness")
+```
+## What Does Personality Look Like Overall?
+This section shows what Big Five personality traits look like on average across all participants. It provides a general reference point before focusing on age-related changes.
+
+```{r overall_mean_for_each_trait}
+big5_scores |>
+  select(all_of(trait_vars)) |>
+  pivot_longer(everything(), names_to = "Trait", values_to = "Score") |>
+  group_by(Trait) |>
+  summarise(Mean = mean(Score, na.rm = TRUE), .groups = "drop") |>
+  ggplot(aes(x = reorder(Trait, Mean), y = Mean, fill = Trait)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  scale_fill_manual(values = c(
+    "Extraversion" = "#E69F00",
+    "Neuroticism" = "#56B4E9",
+    "Agreeableness" = "#009E73",
+    "Conscientiousness" = "#D55E00",
+    "Openness" = "#CC79A7"
+  )) +
+  labs(
+    title = "Overall Levels of Big Five Personality Traits",
+    x = NULL,
+    y = "Mean score (1–5)"
+  ) +
+  theme_minimal()
+```
+<details> 
+<summary><strong> Click to learn more about this plot</strong></summary>
+
+This plot shows what personality looks like on average across the full sample before focusing on age. Openness and agreeableness are the highest on average, while extraversion and neuroticism sit closer to the middle of the scale, showing more variation between people. None of the traits are extremely high or low, which means there is room for them to change over time. This overview helps set the stage for understanding how personality traits shift across age in the next sections.
+
+</details>
+
+## How Do Personality Traits Change Across Age?
+This section directly addresses the primary research question by showing how each Big Five trait changes across age.
+
+Click a trait to view its trend across age (13–90).
+
+<details>
+<summary><strong>Extraversion</strong></summary>
+
+```{r age_extraversion}
+big5_scores |>
+  filter(!is.na(age), age >= 13, age <= 90, is.finite(Extraversion)) |>
+  ggplot(aes(x = age, y = Extraversion)) +
+  geom_smooth(se = FALSE, color = "#E69F00", linewidth = 1.2) +
+  labs(
+    title = "Extraversion Across Age",
+    x = "Age",
+    y = "Extraversion (1–5)"
+  ) +
+  theme_minimal()
+```
+Extraversion increases from adolescence into mid-adulthood, suggesting people become more socially confident and outgoing over time. Later in adulthood, extraversion slowly declines which indicates a gradual shift toward lower social energy rather than a sudden change.
+</details> 
+
+<details> 
+<summary><strong>Neuroticism</strong></summary>
+```{r age_neuroticism}
+big5_scores |>
+  filter(!is.na(age), age >= 13, age <= 90, is.finite(Neuroticism)) |>
+  ggplot(aes(x = age, y = Neuroticism)) +
+  geom_smooth(se = FALSE, color = "#56B4E9", linewidth = 1.2) +
+  labs(
+    title = "Neuroticism Across Age",
+    x = "Age",
+    y = "Neuroticism (1–5)"
+  ) +
+  theme_minimal()
+```
+Neuroticism steadily decreases from adolescence into later adulthood, suggesting people become more emotionally stable with age. There is a slight increase in very late adulthood but overall emotional reactivity remains lower than in early life.
+</details> 
+
+<details> 
+<summary><strong>Neuroticism</strong></summary>
+```{r age_agreebleness}
+big5_scores |>
+  filter(!is.na(age), age >= 13, age <= 90, is.finite(Agreeableness)) |>
+  ggplot(aes(x = age, y = Agreeableness)) +
+  geom_smooth(se = FALSE, color = "#009E73", linewidth = 1.2) +
+  labs(
+    title = "Agreeableness Across Age",
+    x = "Age",
+    y = "Agreeableness (1–5)"
+  ) +
+  theme_minimal()
+```
+Agreeableness steadily increases with age, indicating people tend to become more kind and cooperative over time. The rise levels off in later adulthood, suggesting these social tendencies stabilize rather than decline.
+</details> 
+
+<details>
+<summary><strong>Conscientiousness</strong></summary>
+```{r age_conscientiousness}
+big5_scores |>
+  filter(!is.na(age), age >= 13, age <= 90, is.finite(Conscientiousness)) |>
+  ggplot(aes(x = age, y = Conscientiousness)) +
+  geom_smooth(se = FALSE, color = "#D55E00", linewidth = 1.2) +
+  labs(
+    title = "Conscientiousness Across Age",
+    x = "Age",
+    y = "Conscientiousness (1–5)"
+  ) +
+  theme_minimal()
+```
+Conscientiousness rises with age in this sample. That suggests older participants report more planning and self-control. In cognitive terms, this connects to changes in goal-setting and regulation across the lifespan.
+</details>
+
+<details>
+<summary><strong>Openness</strong></summary>
+```{r age_openness}
+big5_scores |>
+  filter(!is.na(age), age >= 13, age <= 90, is.finite(Openness)) |>
+  ggplot(aes(x = age, y = Openness)) +
+  geom_smooth(se = FALSE, color = "#CC79A7", linewidth = 1.2) +
+  labs(
+    title = "Openness Across Age",
+    x = "Age",
+    y = "Openness (1–5)"
+  ) +
+  theme_minimal()
+```
+Openness is fairly steady across age with only small changes. This shows that not every trait shifts a lot. It seems to be more stable over time compared to traits like conscientiousness and neuroticism.
+</details> 
+
+<details> 
+<summary><strong>What should we take from these age plots?</strong></summary>
+Overall, these age plots show that personality is not fixed and continues to change gradually across the lifespan. Traits related to emotional regulation and self-control, such as neuroticism, conscientiousness, and agreeableness, show the clearest and most consistent changes with age. In contrast, traits related to curiosity and social energy, like openness and extraversion, change less and remain relatively stable over time. Importantly, these age-related patterns are stronger and more consistent than the differences seen between gender groups. Taken together, the results suggest that personality keeps developing as people age, especially in ways connected to emotional stability and goal-directed behavior.
+</details>
+
+
+## How Do Gender Differences Compare to Age Trends?
+This section compares personality traits across gender groups. It helps show whether differences by gender are large or small when compared to the changes observed across age.
+
+<details>
+<summary><strong>Extraversion</strong></summary>
+
+```{r gender_extraversion}
+big5_scores |>
+  filter(!is.na(gender), is.finite(Extraversion)) |>
+  ggplot(aes(x = gender, y = Extraversion)) +
+  geom_boxplot(outlier.shape = NA, fill = "#E69F00") +
+  labs(
+    title = "Extraversion by Gender",
+    x = NULL,
+    y = "Extraversion (1–5)"
+  ) +
+  theme_minimal()
+```
+Females show slightly higher extraversion on average, but the score ranges overlap a lot across all gender groups. 
+</details> 
+
+<details> 
+<summary><strong>Neuroticism</strong></summary>
+
+```{r gender_neuroticism}
+big5_scores |>
+  filter(!is.na(gender), is.finite(Neuroticism)) |>
+  ggplot(aes(x = gender, y = Neuroticism)) +
+  geom_boxplot(outlier.shape = NA, fill = "#56B4E9") +
+  labs(
+    title = "Neuroticism by Gender",
+    x = NULL,
+    y = "Neuroticism (1–5)"
+  ) +
+  theme_minimal()
+```
+Neuroticism is a bit higher on average for females and those in the “Other” group but the distributions still overlap heavily. 
+</details> 
+
+<details>
+<summary><strong>Agreeableness</strong></summary>
+
+```{r gender_agreeableness}
+big5_scores |>
+  filter(!is.na(gender), is.finite(Agreeableness)) |>
+  ggplot(aes(x = gender, y = Agreeableness)) +
+  geom_boxplot(outlier.shape = NA, fill = "#009E73") +
+  labs(
+    title = "Agreeableness by Gender",
+    x = NULL,
+    y = "Agreeableness (1–5)"
+  ) +
+  theme_minimal()
+```
+Females tend to score slightly higher in agreeableness, while males and the “Other” group are somewhat lower on average.
+</details> 
+
+<details>
+<summary><strong>Conscientiousness</strong></summary>
+
+```{r gender_conscientiousness}
+big5_scores |>
+  filter(!is.na(gender), is.finite(Conscientiousness)) |>
+  ggplot(aes(x = gender, y = Conscientiousness)) +
+  geom_boxplot(outlier.shape = NA, fill = "#D55E00") +
+  labs(
+    title = "Conscientiousness by Gender",
+    x = NULL,
+    y = "Conscientiousness (1–5)"
+  ) +
+  theme_minimal()
+```
+Openness scores are very similar across genders, with only small differences in average levels.
+This mirrors the age results, where openness stays fairly stable across the lifespan.
+</details> 
+
+<details>
+<summary><strong>Openness</strong></summary>
+
+```{r gender_openness}
+big5_scores |>
+  filter(!is.na(gender), is.finite(Openness)) |>
+  ggplot(aes(x = gender, y = Openness)) +
+  geom_boxplot(outlier.shape = NA, fill = "#CC79A7") +
+  labs(
+    title = "Openness by Gender",
+    x = NULL,
+    y = "Openness (1–5)"
+  ) +
+  theme_minimal()
+```
+Openness scores are very similar across genders, with only small differences in average levels. This mirrors the age results where openness stays fairly stable across the lifespan.
+</details> 
+
+<details> 
+<summary><strong>What should we take from these gender plots?</strong></summary>
+Across traits, gender differences are usually small and the distributions overlap a lot. That means people of different genders can have similar scores and gender alone doesn’t predict personality well. Compared to the age trends, gender patterns look weaker in this dataset.
+</details> 
+
+
+## How Are the Big Five Traits Related?
+This section shows how strongly the Big Five traits are related to one another. It helps explain whether the traits tend to move together or represent distinct aspects of personality.
+```{r trait_correlation_heatmap}
+# https://www.geeksforgeeks.org/r-language/how-to-calculate-correlation-in-r-with-missing-values/
+big5_scores |>
+  select(all_of(trait_vars)) |>
+  cor(use = "pairwise.complete.obs") |>
+  as_tibble(rownames = "Trait1") |>
+  pivot_longer(-Trait1, names_to = "Trait2", values_to = "r") |>
+  ggplot(aes(x = Trait1, y = Trait2, fill = r)) +
+  geom_tile() +
+  geom_text(aes(label = round(r, 2)), size = 3) +
+  labs(
+    title = "How Related Are the Big Five Traits?",
+    x = "",
+    y = ""
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+<details> <summary><strong> Click to learn more about this plot</strong></summary>
+
+This heatmap shows the correlations between the Big Five personality traits, where darker colors indicate stronger relationships. Most correlations are small to moderate, meaning that while some traits tend to vary together, they are not the same thing. For example, extraversion is moderately related to agreeableness, while neuroticism is negatively related to conscientiousness and extraversion. These patterns show that the Big Five traits are related but largely distinct, which supports examining how each trait changes across age separately rather than treating personality as a single dimension.
+
+</details>
+
+## Summary
+Using data from 19,000+ people, it showed that personality traits are not exactly the same at every age. The strongest age patterns were seen in conscientiousness and agreeableness (which slowly increased with age) and neuroticism (which gradually decreased). This suggests that as people get older, they tend to become more responsible and more emotionally stable. Extraversion and openness changed less, showing only small shifts across the lifespan. When comparing gender groups, the differences in personality were generally small and highly overlapping, especially compared to the clearer trends across age. The correlation analysis also showed that the Big Five traits are connected but still separate, meaning each trait captures a different part of personality. Overall, these findings suggest that personality is not completely fixed early in life. Instead, some traits change slowly over time, which is important for cognitive science because personality is closely linked to how people regulate emotions and interact with the world.
